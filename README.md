@@ -1,16 +1,26 @@
-# Open `package.json` URL : @neos21/open-package-json-url
+# Open `package.json` URL : @neos21/opu
 
-[![NPM Version](https://img.shields.io/npm/v/@neos21/open-package-json-url.svg)](https://www.npmjs.com/package/@neos21/open-package-json-url)
+[![NPM Version](https://img.shields.io/npm/v/@neos21/opu.svg)](https://www.npmjs.com/package/@neos21/opu)
 
 Open URL in `package.json`.
+
+
+## How To Use
+
+```sh
+$ npm install -g @neos21/opu
+
+$ cd /PATH/TO/REPOSITORY/
+$ opu
+```
 
 
 ## Author
 
 [Neo](http://neo.s21.xrea.com/)
 
-- [GitHub - open-package-json-url](https://github.com/Neos21/open-package-json-url)
-- [npm - @neos21/open-package-json-url](https://www.npmjs.com/package/@neos21/open-package-json-url)
+- [GitHub - opu](https://github.com/Neos21/opu)
+- [npm - @neos21/opu](https://www.npmjs.com/package/@neos21/opu)
 
 
 ## Links

@@ -1,5 +1,5 @@
 {
-  "name": "@neos21/open-package-json-url",
+  "name": "@neos21/opu",
   "version": "0.0.0",
   "description": "Open URL in package.json",
   "main": "index.js",
@@ -11,13 +11,13 @@
   },
   "author": "Neo <neos21@gmail.com> (http://neo.s21.xrea.com/)",
   "license": "MIT",
-  "homepage": "https://github.com/Neos21/open-package-json-url#readme",
+  "homepage": "https://github.com/Neos21/opu#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Neos21/open-package-json-url.git"
+    "url": "git+https://github.com/Neos21/opu.git"
   },
   "bugs": {
-    "url": "https://github.com/Neos21/open-package-json-url/issues"
+    "url": "https://github.com/Neos21/opu/issues"
   },
   "funding": {
     "type": "github",
