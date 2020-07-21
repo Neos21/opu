@@ -22,5 +22,10 @@
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/Neos21"
+  },
+  "dependencies": {
+    "inquirer": "7.3.2",
+    "open": "7.1.0",
+    "terminal-link": "2.1.1"
   }
 }
