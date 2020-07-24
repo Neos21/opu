@@ -1,6 +1,6 @@
 {
   "name": "@neos21/opu",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Open URL in package.json",
   "main": "index.js",
   "bin": {
