@@ -1,7 +1,7 @@
 {
   "name": "@neos21/opu",
-  "version": "0.0.1",
-  "description": "Open URL in package.json",
+  "version": "0.0.2",
+  "description": "Open URL in package.json and Git Remote URL",
   "main": "index.js",
   "bin": {
     "opu": "index.js"

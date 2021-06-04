@@ -2,8 +2,7 @@
 
 [![NPM Version](https://img.shields.io/npm/v/@neos21/opu.svg)](https://www.npmjs.com/package/@neos21/opu) [![GPR Version](https://img.shields.io/github/package-json/v/neos21/opu?label=github)](https://github.com/Neos21/opu/packages/328058)
 
-Open URL in `package.json`.
-
+Open URL in `package.json` and Git Remote URL.
 
 ## How To Use
 

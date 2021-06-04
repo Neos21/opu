@@ -2,18 +2,17 @@
 
 const fs   = require('fs').promises;
 const path = require('path');
+const childProcess = require('child_process');
+const util = require('util');
 
 const inquirer = require('inquirer');
 const open = require('open');
 const terminalLink = require('terminal-link');
 
-const isDebugMode = process.env.OPU_IS_DEBUG_MODE;
-
 /**
  * package.json を読み込む
  * 
- * @return {object} package.json を JSON.parse() したオブジェクト
- * @throws package.json が存在しない時、ファイルが読み取れない時、パースに失敗した時
+ * @return {object} package.json を JSON.parse() したオブジェクト・処理に失敗した場合は空の連想配列
  */
 const readPackageJson = async () => {
   const packageJsonPath = path.resolve(process.cwd(), './package.json');
@@ -21,27 +20,27 @@ const readPackageJson = async () => {
   try {
     await fs.access(packageJsonPath);
   }
-  catch(error) {
-    console.error('package.json not found');
-    throw error;
+  catch(_error) {
+    console.warn('\npackage.json not found');
+    return {};
   }
   
   let rawPackageJson;
   try {
     rawPackageJson = await fs.readFile(packageJsonPath, 'utf-8');
   }
-  catch(error) {
-    console.error('Cannot read package.json');
-    throw error;
+  catch(_error) {
+    console.warn('\nCannot read package.json');
+    return {};
   }
   
   try {
     const packageJson = JSON.parse(rawPackageJson);
     return packageJson;
   }
-  catch(error) {
-    console.error('Failed to parse package.json');
-    throw error;
+  catch(_error) {
+    console.warn('\nFailed to parse package.json');
+    return {};
   }
 };
 
@@ -51,46 +50,52 @@ const readPackageJson = async () => {
  * @param {object} packageJson package.json をパースしたオブジェクト
  * @return {object} homepage, author, repository, bugs, funding をキー、それぞれのプロパティに対応する URL 文字列を値としたオブジェクト。URL が取得できなかった場合は null が格納されている
  */
-const findUrls = (packageJson) => {
+const findUrlsFromPackageJson = packageJson => {
   /**
    * 指定のプロパティにある URL 文字列を取得する
    * 
    * @param {string} propertyName プロパティ名
    * @return {string} URL。取得できなかった場合は null
    */
-  const getFromUrlProperty = (propertyName) => {
-    let url = null;
-    if(typeof packageJson[propertyName] === 'string') {
-      url = packageJson[propertyName];
-    }
-    else if(packageJson[propertyName] && packageJson[propertyName].url) {
-      url = packageJson[propertyName].url;
-    }
-    
-    if(!url) { return null; }
-    return url.replace((/(#.*|\.git$)/u), '');  // '#' 以降の文字列や末尾の '.git' を削る
+  const getFromUrlProperty = propertyName => {
+    const url = (typeof packageJson[propertyName] === 'string') ? packageJson[propertyName] : packageJson[propertyName]?.url;
+    return !url ? null : url.replace((/(#.*|\.git$)/u), '');  // '#' 以降の文字列や末尾の '.git' を削る
   };
   
   const homepage = getFromUrlProperty('homepage');
   const author = (() => {
     const url = getFromUrlProperty('author');
-    if(!url) { return null; }
-    
+    if(!url) return null;
     // 文字列中にカッコに囲まれた部分があればそれを URL とする
     const match = url.match((/\((http.*)\)/u));
     return match ? match[1] : url;
   })();
   const repository = (() => {
     const url = getFromUrlProperty('repository');
-    if(!url) { return null; }
-    
+    if(!url) return null;
     // 'git+' から始まっていればそれを削除して渡す
     return url.replace((/^git\+/u), '');
   })();
   const bugs = getFromUrlProperty('bugs');
   const funding = getFromUrlProperty('funding');
-  
   return { homepage, author, repository, bugs, funding };
+};
+
+/**
+ * Git リモート URL を取得する
+ * 
+ * @return {string | null} Git リモート URL が見つかればその URL 文字列、見つからなければ null を返す
+ */
+const findUrlFromGitConfig = async () => {
+  try {
+    const result = await util.promisify(childProcess.exec)('git config remote.origin.url');
+    const url = result.stdout.split('\n').find(line => line.trim());  // 確実に URL を1つだけ取得する
+    if(!url) return null;
+    return url.replace((/\/\/.*@/u), '//').replace((/(\.git$)/u), '');  // '//user-name@' は '//' のみに削り、末尾の '.git' を削る
+  }
+  catch(_error) {
+    return null;  // 異常時 (Git リポジトリではない・git コマンドが存在しないなど) は何もしない
+  }
 };
 
 /**
@@ -99,39 +104,33 @@ const findUrls = (packageJson) => {
  * @param {object} urls package.json から取得した URL のオブジェクト。プロパティ名がキー、URL が値の構成
  * @return {object} GitHub 関連の URL を格納したオブジェクト。うまく生成できなかった場合は null が格納される
  */
-const detectGitHubUrls = (urls) => {
+const detectGitHubUrls = urls => {
   let userName       = null;
   let repositoryName = null;
   let hasGitHubPages = false;  // GitHub Pages が存在することが確実な場合は true にする
   let gitHubPagesUrl = null;
   
-  Object.keys(urls).forEach((key) => {
-    const url = urls[key];
-    if(!url) { return; }
-    
+  Object.values(urls).forEach(url => {
+    if(!url) return;
     if(url.includes('github.com')) {
       if(!userName) {
         const matchUserName = url.match((/github\.com\/(.*?)(\/|\?|#|$)/u));
-        if(matchUserName && matchUserName[1] !== '') {
-          userName = matchUserName[1];
-        }
+        if(matchUserName && matchUserName[1] !== '') userName = matchUserName[1];
       }
       if(!repositoryName) {
         const matchRepositoryName = url.match((/github\.com\/(.*?)\/(.*?)(\/|\?|#|$)/u));
-        if(matchRepositoryName && matchRepositoryName[2] !== '') {
-          repositoryName = matchRepositoryName[2];
-        }
+        if(matchRepositoryName && matchRepositoryName[2] !== '') repositoryName = matchRepositoryName[2];
       }
     }
     else if(url.includes('github.io') && !gitHubPagesUrl) {
       hasGitHubPages = true;  // GitHub Pages が存在することが確実
       
       const gitHubPagesUrlMatch = url.match((/:\/\/(.+?)\.github\.io(\/.*?)?(\/|\?|#|$)/u));  // FIXME : Repository Name 部分の判定が不十分 ('/?hoge' などに対応しきれていない)
-      if(!gitHubPagesUrlMatch) { return; }
+      if(!gitHubPagesUrlMatch) return;
       
       if(gitHubPagesUrlMatch[1]) {
         gitHubPagesUrl = `https://${gitHubPagesUrlMatch[1]}.github.io`;
-        if(!userName) { userName = gitHubPagesUrlMatch[1]; }
+        if(!userName) userName = gitHubPagesUrlMatch[1];
       }
       
       if(gitHubPagesUrlMatch[2] && gitHubPagesUrlMatch[2].length > 1) {
@@ -142,14 +141,12 @@ const detectGitHubUrls = (urls) => {
         // FIXME : リポジトリ名にピリオドを含めることはできるのでこの判定は不正確
         if(!repositoryName) {
           const path = gitHubPagesUrlMatch[2].replace((/^\//u), '');
-          if(!path.includes('.')) {
-            repositoryName = path;
-          }
+          if(!path.includes('.')) repositoryName = path;
         }
       }
       else if(gitHubPagesUrlMatch[2] == null || gitHubPagesUrlMatch[2].length === 1) {
         // '/' までしか取れていなければ User Site 確定とする
-        if(!repositoryName) { repositoryName = `${gitHubPagesUrlMatch[1]}.github.io`; }
+        if(!repositoryName) repositoryName = `${gitHubPagesUrlMatch[1]}.github.io`;
       }
     }
   });
@@ -158,9 +155,7 @@ const detectGitHubUrls = (urls) => {
   const gitHubRepositoryUrl = userName && repositoryName ? `https://github.com/${userName}/${repositoryName}` : null;
   if(!gitHubPagesUrl && userName) {
     gitHubPagesUrl = `https://${userName}.github.io`;
-    if(repositoryName) {
-      gitHubPagesUrl += `/${repositoryName}`;
-    }
+    if(repositoryName) gitHubPagesUrl += `/${repositoryName}`;
   }
   
   return { userName, repositoryName, gitHubUserUrl, gitHubRepositoryUrl, hasGitHubPages, gitHubPagesUrl };
@@ -173,7 +168,7 @@ const detectGitHubUrls = (urls) => {
  * @param {object} gitHubUrls GitHub 関連の URL のオブジェクト
  * @return {Array<object>} 選択肢名を name、URL を value に持つオブジェクトの配列
  */
-const makeChoicesUrl = (urls, gitHubUrls) => {
+const makeChoices = (urls, gitHubUrls) => {
   const choices = [];
   
   if(gitHubUrls.gitHubRepositoryUrl) {
@@ -195,9 +190,15 @@ const makeChoicesUrl = (urls, gitHubUrls) => {
     });
   }
   
-  Object.keys(urls).forEach((key) => {
+  Object.keys(urls).forEach(key => {
     const url = urls[key];
-    if(!url) { return; }
+    if(!url) return;
+    if(key === 'gitRemoteUrl') {
+      return choices.push({
+        name: `[${choices.length + 1}]  ${url} ... Git Remote URL`,
+        value: url
+      });
+    }
     choices.push({
       name: `[${choices.length + 1}]  ${url} ... package.json ${key}`,
       value: url
@@ -218,11 +219,11 @@ const makeChoicesUrl = (urls, gitHubUrls) => {
 /**
  * 選択肢の配列を利用し、ターミナルリンクを表示する
  * 
- * @param {Array<object>} choicesUrl inquirer.js に渡す想定の選択肢の配列
+ * @param {Array<object>} choices inquirer.js に渡す想定の選択肢の配列
  */
-const showLinks = (choicesUrl) => {
-  choicesUrl.forEach((choice) => {
-    if(!choice.value) { return; }  // Cancel は除く
+const showLinks = choices => {
+  choices.forEach(choice => {
+    if(!choice.value) return;  // Cancel は除く
     console.log(terminalLink(choice.name, choice.value, { fallback: false }));  // choice.name 内に URL 文字列が記載されているので Fallback は無効にする
   });
 }
@@ -231,35 +232,35 @@ const showLinks = (choicesUrl) => {
   try {
     // package.json を読み取り URL を取得・生成する
     const packageJson = await readPackageJson();
-    const urls = findUrls(packageJson);
+    const urls = findUrlsFromPackageJson(packageJson);
+    
+    // Git リポジトリのリモート URL があれば取得・マージする
+    const gitRemoteUrl = await findUrlFromGitConfig();
+    if(gitRemoteUrl) urls.gitRemoteUrl = gitRemoteUrl;
+    
+    // URL 一覧から GitHub 関連の URL を組み立てる
     const gitHubUrls = detectGitHubUrls(urls);
     
     // 選択肢を用意する : 選択肢が1つもない = URL が1つも抽出できなかった場合なので中断する
-    const choicesUrl = makeChoicesUrl(urls, gitHubUrls);
-    if(!choicesUrl.length) {
-      console.error('No URLs detected');
-      return;
-    }
+    const choices = makeChoices(urls, gitHubUrls);
+    if(!choices.length) return console.error('\nNo URLs detected');
     
     // 選択肢を表示する
+    console.log('');  // 空行
     const answer = await inquirer.prompt({
       type: 'list',
       name: 'url',  // answer.url = 'value'
       message: 'Which URL do you want to open?',
-      choices: choicesUrl,
+      choices: choices,
       loop: false
     });
     
     // 選択肢と同様のターミナルリンクを表示する
-    showLinks(choicesUrl);
+    showLinks(choices);
     // Cancel 以外が選択された場合は URL をブラウザで開く
-    if(answer.url) {
-      await open(answer.url);
-    }
+    if(answer.url) await open(answer.url);
   }
-  catch(error) {
-    if(isDebugMode) {
-      console.error('Error : ', error);
-    }
+  catch(_error) {
+    // エラー時は何もしない
   }
 })();
